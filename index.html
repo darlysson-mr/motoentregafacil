@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MotoEntrega Fácil</title>
+  <link rel="manifest" href="manifest.json" />
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f7f7f7; }
+    h2 { color: #1a73e8; }
+    input, button {
+      width: 100%; padding: 10px; margin-top: 10px;
+      border: 1px solid #ccc; border-radius: 5px;
+    }
+    button {
+      background-color: #1a73e8; color: white; font-weight: bold;
+    }
+    #resultado { margin-top: 20px; font-size: 1.1em; }
+  </style>
+</head>
+<body>
+  <h2>MotoEntrega Fácil</h2>
+  <input id="destino" placeholder="Digite bairro ou rua de destino" />
+  <input id="linkMaps" placeholder="Ou cole link da localização (Google Maps)" />
+  <input id="valorKm" type="number" value="1.50" step="0.01" />
+  <input id="freteMinimo" type="number" value="10.00" step="0.01" />
+  <button onclick="calcularFrete()">Calcular Frete</button>
+  <div id="resultado"></div>
+
+  <script>
+    const origem = 'Rua 16, Cidade Olímpica, São Luís - MA';
+
+    function extrairCoordenadas(link) {
+      try {
+        const regex = /@(-?\\d+\\.\\d+),(-?\\d+\\.\\d+)/;
+        const altRegex = /\\/place\\/(-?\\d+\\.\\d+),(-?\\d+\\.\\d+)/;
+        const match = link.match(regex) || link.match(altRegex);
+        if (match) return `${match[1]},${match[2]}`;
+        const url = new URL(link);
+        const coords = url.pathname.match(/(-?\\d+\\.\\d+),(-?\\d+\\.\\d+)/);
+        if (coords) return `${coords[1]},${coords[2]}`;
+      } catch (e) {}
+      return null;
+    }
+
+    async function calcularFrete() {
+      const destinoTexto = document.getElementById('destino').value;
+      const linkMaps = document.getElementById('linkMaps').value;
+      const valorKm = parseFloat(document.getElementById('valorKm').value);
+      const freteMinimo = parseFloat(document.getElementById('freteMinimo').value);
+      const resultado = document.getElementById('resultado');
+      resultado.innerHTML = 'Calculando...';
+
+      const destinoFinal = extrairCoordenadas(linkMaps) || destinoTexto + ', São Luís - MA';
+      const apiKey = 'AIzaSyAhHrqRpXJkD2rzq7SUuZpUvTVnPiDO0ys';
+      const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(origem)}&destinations=${encodeURIComponent(destinoFinal)}&departure_time=now&traffic_model=best_guess&key=${apiKey}`;
+      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+
+      try {
+        const response = await fetch(proxyUrl);
+        const data = await response.json();
+
+        const info = data.rows[0].elements[0];
+        if (info.status !== 'OK') {
+          resultado.innerHTML = 'Destino inválido ou não encontrado.';
+          return;
+        }
+
+        const distanciaKm = info.distance.value / 1000;
+        const tempoBase = info.duration.value;
+        const tempoComTransito = info.duration_in_traffic.value;
+
+        let valorBase = distanciaKm * valorKm;
+        if (tempoComTransito > tempoBase * 1.2) valorBase *= 1.08;
+        if (distanciaKm > 10) valorBase *= 1.35;
+        else if (distanciaKm > 6) valorBase *= 1.15;
+        if (valorBase < freteMinimo) valorBase = freteMinimo;
+
+        resultado.innerHTML = `
+          <strong>Distância:</strong> ${distanciaKm.toFixed(2)} km<br />
+          <strong>Tempo estimado com trânsito:</strong> ${info.duration_in_traffic.text}<br />
+          <strong>Valor do frete:</strong> R$ ${valorBase.toFixed(2)}
+        `;
+      } catch (err) {
+        resultado.innerHTML = 'Erro ao calcular frete. Verifique a conexão.';
+      }
+    }
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js');
+      });
+    }
+  </script>
+</body>
+</html>
